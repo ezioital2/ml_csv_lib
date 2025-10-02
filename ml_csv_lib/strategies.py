@@ -49,8 +49,8 @@ class UnsupervisedStrategy(TreatmentStrategy):
         """
         return apply_unsupervised_treatment(df, treatment_type, cat_cols, cont_cols, scaled)
 
-class RegressionStrategy(SupervisedStrategy):
-    def prepare_data(self, df: pd.DataFrame, treatment_type: RegressionTreatmentType, cat_cols: list, cont_cols: list, additional_transform: str = 'none', scaled: bool = True, **kwargs) -> tuple:
+class RegressionStrategy(TreatmentStrategy):
+    def prepare_data(self, df: pd.DataFrame, treatment_type: RegressionTreatmentType, cat_cols: list, cont_cols: list, target_col: str, additional_transform: str = 'none', scaled: bool = True) -> tuple:
         """
         Prepares data for regression, with optional additional transformation (yeo-johnson, box-cox, none).
         
@@ -58,15 +58,11 @@ class RegressionStrategy(SupervisedStrategy):
         :param treatment_type: RegressionTreatmentType enum.
         :param cat_cols: Categorical columns.
         :param cont_cols: Continuous columns.
+        :param target_col: Name of the target variable.
         :param additional_transform: 'yeo-johnson', 'box-cox', or 'none'.
         :param scaled: Whether to scale continuous variables.
-        :param kwargs: Must include 'target_col'.
         :return: X, y after treatment.
         """
-        if 'target_col' not in kwargs:
-            raise ValueError("Regression strategy requires 'target_col' in kwargs.")
-        target_col = kwargs['target_col']
-        
         # Remove target from cat/cont if present
         if target_col in cat_cols:
             cat_cols.remove(target_col)
