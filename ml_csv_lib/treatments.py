@@ -1,3 +1,4 @@
+# ml_csv_lib/treatments.py
 from enum import Enum
 import pandas as pd
 from sklearn.preprocessing import PowerTransformer
@@ -41,33 +42,48 @@ def apply_supervised_treatment(df: pd.DataFrame, treatment_type: SupervisedTreat
     :return: Transformed DataFrame.
     """
     df = df.copy()
-    original_cont_cols = cont_cols.copy()
     
+    # Guardar target separadamente
+    target_values = df[target_col].copy()
+    
+    # Remover target del DataFrame para transformaciones
+    df_features = df.drop(target_col, axis=1)
+    
+    # Aplicar encoding según treatment_type
     if treatment_type == SupervisedTreatmentType.ALL_TO_NUMERIC:
-        df = Encoders.label_encode(df, cat_cols)
+        df_features = Encoders.label_encode(df_features, cat_cols)
     
     elif treatment_type == SupervisedTreatmentType.ONEHOT:
-        df = Encoders.one_hot_encode(df, cat_cols)
+        df_features = Encoders.one_hot_encode(df_features, cat_cols)
     
     elif treatment_type == SupervisedTreatmentType.ORDINAL:
-        df = Encoders.ordinal_encode(df, cat_cols)
+        df_features = Encoders.ordinal_encode(df_features, cat_cols)
     
     elif treatment_type == SupervisedTreatmentType.ONEHOT_INTERACT:
-        df = Encoders.one_hot_encode(df, cat_cols)
-        if len(original_cont_cols) >= 2:
-            df = FeatureEngineer.create_interactions(df, original_cont_cols[0], original_cont_cols[1])
+        df_features = Encoders.one_hot_encode(df_features, cat_cols)
+        if len(cont_cols) >= 2:
+            df_features = FeatureEngineer.create_interactions(df_features, cont_cols[0], cont_cols[1])
     
     elif treatment_type == SupervisedTreatmentType.TARGET_ENCODE:
-        df = Encoders.target_encode(df, cat_cols, target_col)
+        # Para target encoding necesitamos el target temporalmente
+        df_temp = df_features.copy()
+        df_temp[target_col] = target_values
+        df_temp = Encoders.target_encode(df_temp, cat_cols, target_col)
+        df_features = df_temp.drop(target_col, axis=1)
     
     else:
         raise ValueError("Invalid supervised treatment type.")
     
-    # Aplicar scaling solo si scaled=True
-    if scaled and original_cont_cols:
-        df = FeatureEngineer.scale_continuous(df, columns=None)
+    # Aplicar scaling solo si scaled=True, y solo a las features numéricas
+    if scaled:
+        numeric_cols = df_features.select_dtypes(include=['int', 'float']).columns.tolist()
+        if numeric_cols:
+            df_features = FeatureEngineer.scale_continuous(df_features, columns=numeric_cols)
     
-    return df
+    # Reconstruir el DataFrame con el target original
+    df_features[target_col] = target_values
+    
+    return df_features
 
 def apply_unsupervised_treatment(df: pd.DataFrame, treatment_type: UnsupervisedTreatmentType, cat_cols: list, cont_cols: list, scaled: bool = True) -> pd.DataFrame:
     """
@@ -81,7 +97,6 @@ def apply_unsupervised_treatment(df: pd.DataFrame, treatment_type: UnsupervisedT
     :return: Transformed DataFrame.
     """
     df = df.copy()
-    original_cont_cols = cont_cols.copy()
     
     if treatment_type == UnsupervisedTreatmentType.ALL_TO_NUMERIC:
         df = Encoders.label_encode(df, cat_cols)
@@ -95,15 +110,15 @@ def apply_unsupervised_treatment(df: pd.DataFrame, treatment_type: UnsupervisedT
     elif treatment_type == UnsupervisedTreatmentType.LABEL_BIN:
         df = Encoders.label_encode(df, cat_cols)
         binned_cols = []
-        for col in original_cont_cols:
+        for col in cont_cols:
             df = FeatureEngineer.bin_continuous(df, col)
             binned_cols.append(f"{col}_binned")
         df = Encoders.label_encode(df, binned_cols)
     
     elif treatment_type == UnsupervisedTreatmentType.ONEHOT_INTERACT:
         df = Encoders.one_hot_encode(df, cat_cols)
-        if len(original_cont_cols) >= 2:
-            df = FeatureEngineer.create_interactions(df, original_cont_cols[0], original_cont_cols[1])
+        if len(cont_cols) >= 2:
+            df = FeatureEngineer.create_interactions(df, cont_cols[0], cont_cols[1])
     
     elif treatment_type == UnsupervisedTreatmentType.FREQUENCY_ENCODE:
         df = Encoders.frequency_encode(df, cat_cols)
@@ -114,39 +129,76 @@ def apply_unsupervised_treatment(df: pd.DataFrame, treatment_type: UnsupervisedT
     else:
         raise ValueError("Invalid unsupervised treatment type.")
     
-    # Aplicar scaling solo si scaled=True
-    if scaled and original_cont_cols:
-        df = FeatureEngineer.scale_continuous(df, columns=None)
+    # Aplicar scaling solo si scaled=True, a todas las columnas numéricas
+    if scaled:
+        numeric_cols = df.select_dtypes(include=['int', 'float']).columns.tolist()
+        if numeric_cols:
+            df = FeatureEngineer.scale_continuous(df, columns=numeric_cols)
     
     return df
 
 def apply_regression_treatment(df: pd.DataFrame, treatment_type: RegressionTreatmentType, cat_cols: list, cont_cols: list, target_col: str, additional_transform: str = 'none', scaled: bool = True) -> pd.DataFrame:
-    """Aplica tratamiento para regresión"""
-    df = df.copy()
-    original_cont_cols = cont_cols.copy()
+    """
+    Applies the selected treatment for regression, with optional power transform.
     
+    :param df: DataFrame.
+    :param treatment_type: RegressionTreatmentType enum.
+    :param cat_cols: Categorical columns.
+    :param cont_cols: Continuous columns.
+    :param target_col: Target column for encodings like target_encode.
+    :param additional_transform: 'yeo-johnson', 'box-cox', or 'none'.
+    :param scaled: Whether to scale continuous variables.
+    :return: Transformed DataFrame.
+    """
+    df = df.copy()
+    
+    # Guardar target separadamente
+    target_values = df[target_col].copy()
+    
+    # Remover target del DataFrame para transformaciones
+    df_features = df.drop(target_col, axis=1)
+    
+    # Aplicar transformación de potencia si se especifica, solo a columnas continuas
     if additional_transform != 'none':
         pt = PowerTransformer(method=additional_transform, standardize=False)
-        df[original_cont_cols] = pt.fit_transform(df[original_cont_cols])
+        if cont_cols:
+            df_features[cont_cols] = pt.fit_transform(df_features[cont_cols])
     
+    # Aplicar encoding según treatment_type
     if treatment_type == RegressionTreatmentType.NONE:
-        pass
+        pass  # No se aplica encoding
+    
     elif treatment_type == RegressionTreatmentType.ALL_TO_NUMERIC:
-        df = Encoders.label_encode(df, cat_cols)
+        df_features = Encoders.label_encode(df_features, cat_cols)
+    
     elif treatment_type == RegressionTreatmentType.ONEHOT:
-        df = Encoders.one_hot_encode(df, cat_cols)
+        df_features = Encoders.one_hot_encode(df_features, cat_cols)
+    
     elif treatment_type == RegressionTreatmentType.ORDINAL:
-        df = Encoders.ordinal_encode(df, cat_cols)
+        df_features = Encoders.ordinal_encode(df_features, cat_cols)
+    
     elif treatment_type == RegressionTreatmentType.ONEHOT_INTERACT:
-        df = Encoders.one_hot_encode(df, cat_cols)
-        if len(original_cont_cols) >= 2:
-            df = FeatureEngineer.create_interactions(df, original_cont_cols[0], original_cont_cols[1])
+        df_features = Encoders.one_hot_encode(df_features, cat_cols)
+        if len(cont_cols) >= 2:
+            df_features = FeatureEngineer.create_interactions(df_features, cont_cols[0], cont_cols[1])
+    
     elif treatment_type == RegressionTreatmentType.TARGET_ENCODE:
-        df = Encoders.target_encode(df, cat_cols, target_col)
+        # Para target encoding necesitamos el target temporalmente
+        df_temp = df_features.copy()
+        df_temp[target_col] = target_values
+        df_temp = Encoders.target_encode(df_temp, cat_cols, target_col)
+        df_features = df_temp.drop(target_col, axis=1)
+    
     else:
         raise ValueError("Invalid regression treatment type.")
     
-    if scaled and original_cont_cols:
-        df = FeatureEngineer.scale_continuous(df, columns=None)
+    # Aplicar scaling solo si scaled=True, a todas las columnas numéricas de features
+    if scaled:
+        numeric_cols = df_features.select_dtypes(include=['int', 'float']).columns.tolist()
+        if numeric_cols:
+            df_features = FeatureEngineer.scale_continuous(df_features, columns=numeric_cols)
     
-    return df
+    # Reconstruir el DataFrame con el target original
+    df_features[target_col] = target_values
+    
+    return df_features
