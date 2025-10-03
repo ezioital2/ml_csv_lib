@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
+from cuml.cluster import KMeans as cuKMeans
 import jax.numpy as jnp
 from jax import jit, vmap
 import numba
@@ -120,7 +120,7 @@ def reduce_dataset_stratified_clustering_jax(X, y, target_samples=20000, n_bins=
         # KMeans con parámetros optimizados
         bin_seed = (random_state + bin_idx) % 100000
         
-        kmeans = KMeans(
+        kmeans = cuKMeans(
             n_clusters=min(k_bin, len(idx_in_bin)),
             random_state=bin_seed,
             n_init=3,
