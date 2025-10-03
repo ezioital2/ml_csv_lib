@@ -5,3 +5,6 @@ from .data_selector import DataSelector
 from .strategies import SupervisedStrategy, UnsupervisedStrategy, RegressionStrategy, SupervisedPerColumnStrategy, UnsupervisedPerColumnStrategy, RegressionPerColumnStrategy
 from .treatments import SupervisedTreatmentType, UnsupervisedTreatmentType, RegressionTreatmentType, apply_supervised_treatment, apply_unsupervised_treatment, apply_regression_treatment
 from .encoding_config import EncodingMethod, ColumnEncoding
+
+# ⭐⭐ ADD:
+from .outliers_strategies import OutlierStrategy, IQRStrategy, ZScoreStrategy, PercentileStrategy, CompositeOutlierStrategy
