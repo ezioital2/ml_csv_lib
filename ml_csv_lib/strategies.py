@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Union, Tuple, Optional
 import pandas as pd
 from .treatments import SupervisedTreatmentType, UnsupervisedTreatmentType, RegressionTreatmentType, apply_supervised_treatment, apply_unsupervised_treatment, apply_regression_treatment
 from .encoding_config import ColumnEncoding, EncodingMethod
@@ -39,7 +40,7 @@ class SupervisedStrategy(TreatmentStrategy):
         return X, y
 
 class UnsupervisedStrategy(TreatmentStrategy):
-    def prepare_data(self, df: pd.DataFrame, treatment_type: UnsupervisedTreatmentType, cat_cols: list, cont_cols: list, scaled: bool = True, **kwargs) -> pd.DataFrame:
+    def prepare_data(self, df: pd.DataFrame, treatment_type: UnsupervisedTreatmentType, cat_cols: list, cont_cols: list, scaled: bool = True, **kwargs) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.Series]]:
         """
         Prepares data for unsupervised learning (e.g., clustering).
         Handles mixed types for clustering.
@@ -49,9 +50,37 @@ class UnsupervisedStrategy(TreatmentStrategy):
         :param cat_cols: Categorical columns.
         :param cont_cols: Continuous columns.
         :param scaled: Whether to scale continuous variables.
-        :return: Transformed DataFrame ready for clustering.
+        :param kwargs: May include 'true_label_col' for ground truth labels.
+        :return: Transformed DataFrame ready for clustering, or (X, y_true) if true_label_col provided.
         """
-        return apply_unsupervised_treatment(df, treatment_type, cat_cols, cont_cols, scaled)
+        true_label_col = kwargs.get('true_label_col')
+        y_true = None
+        
+        # Si se especifica true_label_col, extraerlo
+        if true_label_col and true_label_col in df.columns:
+            y_true = df[true_label_col].copy()
+            # Crear copia para no modificar el original
+            df_working = df.drop(true_label_col, axis=1).copy()
+            
+            # Remover true_label_col de cat_cols y cont_cols si está presente
+            cat_cols_working = cat_cols.copy() if true_label_col in cat_cols else cat_cols
+            cont_cols_working = cont_cols.copy() if true_label_col in cont_cols else cont_cols
+            
+            if true_label_col in cat_cols_working:
+                cat_cols_working.remove(true_label_col)
+            if true_label_col in cont_cols_working:
+                cont_cols_working.remove(true_label_col)
+        else:
+            df_working = df.copy()
+            cat_cols_working = cat_cols
+            cont_cols_working = cont_cols
+        
+        transformed_df = apply_unsupervised_treatment(df_working, treatment_type, cat_cols_working, cont_cols_working, scaled)
+        
+        if y_true is not None:
+            return transformed_df, y_true
+        else:
+            return transformed_df
 
 class RegressionStrategy(TreatmentStrategy):
     def prepare_data(self, df: pd.DataFrame, treatment_type: RegressionTreatmentType, cat_cols: list, cont_cols: list, additional_transform: str = 'none', scaled: bool = True, **kwargs) -> tuple:
@@ -84,6 +113,7 @@ class RegressionStrategy(TreatmentStrategy):
         transformed_df = apply_regression_treatment(df, treatment_type, cat_cols, cont_cols, target_col, additional_transform, scaled)
         X, y = transformed_df.drop(target_col, axis=1), transformed_df[target_col]
         return X, y
+
 class SupervisedPerColumnStrategy(TreatmentStrategy):
     def prepare_data(self, df: pd.DataFrame, column_encodings: list, cont_cols: list, scaled: bool = True, **kwargs) -> tuple:
         """
@@ -177,14 +207,28 @@ class SupervisedPerColumnStrategy(TreatmentStrategy):
         return df_encoded
 
 class UnsupervisedPerColumnStrategy(TreatmentStrategy):
-    def prepare_data(self, df: pd.DataFrame, column_encodings: list, cont_cols: list, scaled: bool = True, **kwargs) -> pd.DataFrame:
+    def prepare_data(self, df: pd.DataFrame, column_encodings: list, cont_cols: list, scaled: bool = True, **kwargs) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.Series]]:
         """
         Prepares data for unsupervised learning with per-column encoding.
         """
-        df_encoded = df.copy()
+        true_label_col = kwargs.get('true_label_col')
+        y_true = None
+        
+        # Si se especifica true_label_col, extraerlo
+        if true_label_col and true_label_col in df.columns:
+            y_true = df[true_label_col].copy()
+            df_working = df.drop(true_label_col, axis=1).copy()
+            
+            # Filtrar column_encodings para remover true_label_col si está presente
+            column_encodings_working = [ce for ce in column_encodings if ce.column_name != true_label_col]
+        else:
+            df_working = df.copy()
+            column_encodings_working = column_encodings
+        
+        df_encoded = df_working.copy()
         
         # Aplicar encoding por columna (sin target)
-        for col_encoding in column_encodings:
+        for col_encoding in column_encodings_working:
             col_name = col_encoding.column_name
             method = col_encoding.method
             params = col_encoding.params or {}
@@ -230,7 +274,10 @@ class UnsupervisedPerColumnStrategy(TreatmentStrategy):
             if numeric_cols:
                 df_encoded = FeatureEngineer.scale_continuous(df_encoded, columns=numeric_cols)
         
-        return df_encoded
+        if y_true is not None:
+            return df_encoded, y_true
+        else:
+            return df_encoded
 
 class RegressionPerColumnStrategy(TreatmentStrategy):
     def prepare_data(self, df: pd.DataFrame, column_encodings: list, cont_cols: list, additional_transform: str = 'none', scaled: bool = True, **kwargs) -> tuple:
