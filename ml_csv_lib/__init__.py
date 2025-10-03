@@ -8,3 +8,4 @@ from .encoding_config import EncodingMethod, ColumnEncoding
 
 # ⭐⭐ ADD:
 from .outliers_strategies import OutlierStrategy, IQRStrategy, ZScoreStrategy, PercentileStrategy, CompositeOutlierStrategy
+from .reduce_dataset_stratified_clustering import reduce_dataset_stratified_clustering_fixed
