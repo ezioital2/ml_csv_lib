@@ -1,4 +1,3 @@
-# ml_csv_lib/treatments.py
 from enum import Enum
 import pandas as pd
 from sklearn.preprocessing import PowerTransformer
@@ -6,6 +5,7 @@ from .encoders import Encoders
 from .feature_engineer import FeatureEngineer
 
 class SupervisedTreatmentType(Enum):
+    NONE = 0            # ⭐⭐ NUEVO: No encoding, solo scaling
     ALL_TO_NUMERIC = 1  # Label encode all categoricals
     ONEHOT = 2          # One-hot categoricals
     ORDINAL = 3         # Ordinal encode categoricals
@@ -13,6 +13,7 @@ class SupervisedTreatmentType(Enum):
     TARGET_ENCODE = 6   # Target encode categoricals
 
 class UnsupervisedTreatmentType(Enum):
+    NONE = 0            # ⭐⭐ NUEVO: No encoding, solo scaling
     ALL_TO_NUMERIC = 1  # Label encode all categoricals
     ONEHOT = 2          # One-hot categoricals
     ORDINAL = 3         # Ordinal encode categoricals
@@ -22,7 +23,7 @@ class UnsupervisedTreatmentType(Enum):
     EMBED = 8           # Embed categoricals (OneHot + PCA)
 
 class RegressionTreatmentType(Enum):
-    NONE = 0            # ⭐⭐ NUEVO: No encoding, solo transformación opcional + scaling
+    NONE = 0            # No encoding, solo transformación opcional + scaling
     ALL_TO_NUMERIC = 1  # Label encode all categoricals
     ONEHOT = 2          # One-hot categoricals
     ORDINAL = 3         # Ordinal encode categoricals
@@ -49,8 +50,12 @@ def apply_supervised_treatment(df: pd.DataFrame, treatment_type: SupervisedTreat
     # Remover target del DataFrame para transformaciones
     df_features = df.drop(target_col, axis=1)
     
-    # Aplicar encoding según treatment_type
-    if treatment_type == SupervisedTreatmentType.ALL_TO_NUMERIC:
+    # ⭐⭐ ACTUALIZADO: Manejar tratamiento NONE
+    if treatment_type == SupervisedTreatmentType.NONE:
+        # No se aplica encoding a las categóricas
+        pass
+    
+    elif treatment_type == SupervisedTreatmentType.ALL_TO_NUMERIC:
         df_features = Encoders.label_encode(df_features, cat_cols)
     
     elif treatment_type == SupervisedTreatmentType.ONEHOT:
@@ -98,7 +103,12 @@ def apply_unsupervised_treatment(df: pd.DataFrame, treatment_type: UnsupervisedT
     """
     df = df.copy()
     
-    if treatment_type == UnsupervisedTreatmentType.ALL_TO_NUMERIC:
+    # ⭐⭐ ACTUALIZADO: Manejar tratamiento NONE
+    if treatment_type == UnsupervisedTreatmentType.NONE:
+        # No se aplica encoding
+        pass
+    
+    elif treatment_type == UnsupervisedTreatmentType.ALL_TO_NUMERIC:
         df = Encoders.label_encode(df, cat_cols)
     
     elif treatment_type == UnsupervisedTreatmentType.ONEHOT:
